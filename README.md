@@ -1,139 +1,118 @@
-#  Tawbah|توبة
-### Intelligent AI System for Lowering the Gaze on Windows
+Tawbah | توبة
+Intelligent AI System for Lowering the Gaze — Android App
 
-**Tawbah** is a professional Windows-based application that helps young people **lower their gaze** by intelligently filtering web images using Artificial Intelligence.  
-The system selectively **blurs or hides images of females only**, while keeping the rest of the webpage fully visible and functional.
+Tawbah is a professional Android application that helps young people lower their gaze by intelligently filtering on-screen images using Artificial Intelligence. The system selectively blurs images of females only, while keeping the rest of the screen fully visible and usable.
 
-##  Vision
+Vision
 
-In a world full of visual distractions, **Tawbah** was created to support youth in maintaining focus, purity of sight, and ethical browsing — without isolating them from the internet or blocking useful content.
+In a world full of visual distractions, Tawbah was created to support youth in maintaining focus, purity of sight, and ethical browsing — without isolating them from their phone or blocking useful content.
 
+Overview
 
-##  Overview
+Unlike traditional content blockers that shut down entire apps or websites, Tawbah works at the image level, directly on the device screen:
 
-Unlike traditional content blockers that shut down entire websites, **Tawbah** works at the image level:
+Helps users practice غضّ البصر
+Preserves normal phone usage across all apps
+Blurs only what needs to be blurred
+Encourages self-discipline, not isolation
 
-- Helps users practice *غضّ البصر*  
--  Preserves website usability  
--  Blocks only what needs to be blocked  
--  Encourages self-discipline, not isolation  
+The application runs locally on Android and uses on-device AI (no internet required) to analyze and filter images in real time, through a system-wide overlay.
 
-The application runs locally on Windows and uses AI-powered computer vision to analyze and filter images in real time.
+Key Features
+Intelligent selective image filtering, applied system-wide over any app
+Female-only image detection
+Real-time, on-device processing (no data leaves the phone)
+No app or website blocking — only the image itself is filtered
+Fully local & privacy-respecting
+Adjustable blur strength and detection sensitivity
+How It Works
 
+Tawbah operates as an Android system overlay combined with on-device AI models:
 
+The app requests overlay ("display over other apps") and screen-capture permissions
+A lightweight, continuous screen capture pipeline reads the current screen content
+YOLOv8n detects people/persons present in the captured frame
+A lightweight gender classification model evaluates each detected person
+If a female is detected, a blur is rendered over that region on the overlay
+The rest of the screen is left untouched, so browsing stays smooth and functional
 
-##  Key Features
+This allows a respectful, uninterrupted phone experience across any app or browser.
 
-- Intelligent selective image filtering  
-- Female-only image detection  
-- Real-time processing  
-- No website blocking  
-- Works with all modern browsers  
-- Fully local & privacy-respecting  
-- Multiple filtering modes:
-  - Blur images
-  - Hide images
-  - Replace images with neutral placeholders  
-
----
-
-##  How It Works
-
-**Tawbah** operates as a **local proxy** between the browser and the internet:
-
-1. Web images are intercepted before rendering  
-2. Images are analyzed using AI models  
-3. Human presence and gender are detected  
-4. If a female is detected, the image is filtered  
-5. The rest of the webpage loads normally  
-
-This allows a smooth and respectful browsing experience.
-
-
-
-##  Technologies Used
-
-- **Python**
-- **OpenCV**
-- **YOLOv8**
-- **mitmproxy**
-- **AI Gender Classification Models**
-- **Windows OS**
-
-
-
-##  System Requirements
-
-- Windows 10 or later  
-- Python 3.9+  
-- Any modern browser (Chrome, Edge, Firefox)  
-- Minimum 4GB RAM (8GB recommended)
-
----
-
-##  Installation
-
-###  Clone the repository
-## bash
+Technologies Used
+Flutter / Dart — app UI and overlay logic
+flutter_overlay_window — system-wide overlay window
+TensorFlow Lite — on-device inference (YOLOv8n + gender classifier)
+YOLOv8n — person detection
+Custom gender classification model (fine-tuned, TFLite-converted)
+Android (native platform)
+System Requirements
+Android 8.0 (API 26) or later
+"Display over other apps" permission
+Screen capture permission (granted per session, per Android policy)
+~50MB free storage for on-device models
+Installation (Development)
+Clone the repository
+bash
 git clone https://github.com/osmankiv/tawbah.git
 cd tawbah
-## Install dependencies
+Install dependencies
+bash
+flutter pub get
+Run the app
+bash
+flutter run
+Grant permissions (first run)
 
-Bash
-pip install -r requirements.txt
-## Run Tawbah
+On first launch, the app will prompt for:
 
-Bash
-mitmproxy -s tawbah_filter.py
-## Configure browser proxy
+Overlay permission ("Display over other apps") — required to render the blur layer
+Screen capture permission — required each time the filter is activated (Android system requirement)
+Configuration
 
-
-Address: 127.0.0.1
-Port:    8080
-## Install mitmproxy certificate (once)
-Visit:
-
-
-http://mitm.it
-# Configuration
 You can customize:
+
 Detection sensitivity
 Blur strength
-Filtering mode
 Gender confidence threshold
-All options are available in config.py.
-# Privacy & Ethics
-All process،ing is local
-No images are saved
-No external servers or APIs
-No tracking or monitoring
+Capture frequency (frames analyzed per second, to balance battery vs. responsiveness)
+Privacy & Ethics
+All processing happens on-device
+No images are saved or stored
+No external servers or APIs are contacted
+No tracking or monitoring of user behavior
+
 Tawbah is designed to support moral discipline, not surveillance.
-# Use Cases
+
+Use Cases
 Personal self-discipline
 Youth guidance tools
 Religious and conservative environments
 Educational institutions
-Safe browsing setups
-# Limitations
-AI accuracy depends on image clarity
+Safe browsing setups on personal devices
+Limitations
+AI accuracy depends on image clarity and screen content
 Some edge cases may bypass detection
-Initial proxy setup is required
-# Future Plans
-Simple graphical user interface (GUI)
-Automatic startup with Windows
+Continuous screen capture has a battery/performance cost
+Requires manual permission grants due to Android security policy
+Future Plans
 Improved gender classification accuracy
-Mobile companion version
-User profiles and schedules
-# Contribution
-Contributions are welcome.
-Feel free to fork the project, open issues, or submit pull requests.
-# License
+Adaptive capture frequency for better battery life
+iOS feasibility study (iOS has stricter overlay/screen-capture restrictions)
+User profiles and scheduling (e.g., auto-enable during certain hours)
+Contribution
+
+Contributions are welcome. Feel free to fork the project, open issues, or submit pull requests.
+
+License
+
 MIT License
-# Purpose
-“قُلْ لِلْمُؤْمِنِينَ يَغُضُّوا مِنْ أَبْصَارِهِمْ”
-— سورة النور
-Tawbah exists to help, not to force —
-a companion on the path of self-control and awareness.
-#Author
-Developed with sincerity
-to help youth walk a cleaner digital path.
+
+Purpose
+
+"قُلْ لِلْمُؤْمِنِينَ يَغُضُّوا مِنْ أَبْصَارِهِمْ" — سورة النور
+
+Tawbah exists to help, not to force — a companion on the path of self-control and awareness.
+
+Author
+
+Developed with sincerity, to help youth walk a cleaner digital path.
