@@ -1,3 +1,24 @@
+<<<<<<< HEAD
+# Tawbah2
+
+A new Flutter project created with FlutLab - https://flutlab.io
+
+## Getting Started
+
+A few resources to get you started if this is your first Flutter project:
+
+- https://flutter.dev/docs/get-started/codelab
+- https://flutter.dev/docs/cookbook
+
+For help getting started with Flutter, view our
+https://flutter.dev/docs, which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
+
+## Getting Started: FlutLab - Flutter Online IDE
+
+- How to use FlutLab? Please, view our https://flutlab.io/docs
+- Join the discussion and conversation on https://flutlab.io/residents
+=======
 Tawbah | توبة
 Intelligent AI System for Lowering the Gaze — Android App
 
@@ -116,3 +137,4 @@ Tawbah exists to help, not to force — a companion on the path of self-control 
 Author
 
 Developed with sincerity, to help youth walk a cleaner digital path.
+>>>>>>> 08339b4d3b94423f7ed3b67d813e60c2160bb66f
