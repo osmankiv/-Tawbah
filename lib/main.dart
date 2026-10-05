@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -42,40 +43,44 @@ class _TestPageState extends State<TestPage> {
   Future<void> _pick() async {
     final interp = _interp;
     if (interp == null) return;
+    String step = 'pick';
     try {
       final x = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (x == null) return;
-      final decoded = img.decodeImage(await x.readAsBytes());
-      if (decoded == null) return;
-      final r = img.copyResize(decoded, width: 224, height: 224);
 
-      final inT = interp.getInputTensor(0);
-      if (inT.type != TensorType.float32) {
-        setState(() {
-          _file = File(x.path);
-          _result = 'Input type is ${inT.type}, send me this line';
-        });
+      step = 'decode';
+      final decoded = img.decodeImage(await x.readAsBytes());
+      if (decoded == null) {
+        setState(() => _result = 'Could not decode image');
         return;
       }
-      final nchw = inT.shape[1] == 3;
+      final r = img.copyResize(img.bakeOrientation(decoded),
+          width: 224, height: 224);
 
-      double v(int px, int py, int c) {
-        final p = r.getPixel(px, py);
-        final num val = c == 0 ? p.r : (c == 1 ? p.g : p.b);
-        return val / 255.0;
+      step = 'prepare';
+      final data = Float32List(3 * 224 * 224);
+      int k = 0;
+      for (int c = 0; c < 3; c++) {
+        for (int y = 0; y < 224; y++) {
+          for (int px = 0; px < 224; px++) {
+            final p = r.getPixel(px, y);
+            final num val = c == 0 ? p.r : (c == 1 ? p.g : p.b);
+            data[k++] = val / 255.0;
+          }
+        }
       }
 
-      final input = nchw
-          ? List.generate(1, (_) => List.generate(3, (c) =>
-              List.generate(224, (y) => List.generate(224, (px) => v(px, y, c)))))
-          : List.generate(1, (_) => List.generate(224, (y) =>
-              List.generate(224, (px) => List.generate(3, (c) => v(px, y, c)))));
+      step = 'set input';
+      interp.getInputTensor(0).data = data.buffer.asUint8List();
 
-      final n = interp.getOutputTensor(0).shape[1];
-      final output = List.generate(1, (_) => List.filled(n, 0.0));
-      interp.run(input, output);
+      step = 'invoke';
+      interp.invoke();
 
-      final probs = output[0];
+      step = 'read output';
+      final bytes = interp.getOutputTensor(0).data;
+      final probs = Float32List.view(
+          bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 4);
+
       setState(() {
         _file = File(x.path);
         _result = [
@@ -84,7 +89,7 @@ class _TestPageState extends State<TestPage> {
         ].join('\n');
       });
     } catch (e) {
-      setState(() => _result = 'Error: $e');
+      setState(() => _result = 'Error at "$step": $e');
     }
   }
 
