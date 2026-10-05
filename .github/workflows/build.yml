@@ -16,8 +16,14 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Generate fresh android project
+        run: flutter create --platforms=android --org com.osman --project-name tawbah .
+      - name: Patch android config
+        run: |
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
+          echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
       - run: flutter pub get
-      - run: flutter build apk --release
+      - run: flutter build apk --release --no-shrink
       - uses: actions/upload-artifact@v4
         with:
           name: tawbah-apk

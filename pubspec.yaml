@@ -1,7 +1,6 @@
-name: tawbah2
-description: A new Flutter project.
+name: tawbah
+description: Tawbah
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -13,11 +12,6 @@ dependencies:
   flutter_overlay_window: ^0.4.5
   tflite_flutter: ^0.11.0
   image: ^4.2.0
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
