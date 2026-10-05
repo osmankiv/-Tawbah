@@ -12,6 +12,7 @@ dependencies:
   flutter_overlay_window: ^0.4.5
   tflite_flutter: ^0.12.1
   image: ^4.2.0
+  image_picker: ^1.1.2
 
 flutter:
   uses-material-design: true
