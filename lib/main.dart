@@ -28,7 +28,7 @@ class _TestPageState extends State<TestPage> {
   Future<void> _load() async {
     try {
       final interp = await Interpreter.fromAsset(
-          'assets/models/best_Gender_classification_int8.tflite');
+          'assets/models/gender_cls_float32.tflite');
       final i = interp.getInputTensor(0);
       final o = interp.getOutputTensor(0);
       setState(() {
