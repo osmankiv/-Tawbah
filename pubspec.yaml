@@ -13,6 +13,7 @@ dependencies:
   tflite_flutter: ^0.12.1
   image: ^4.2.0
   image_picker: ^1.1.2
+  google_mlkit_face_detection: ^0.13.1
 
 flutter:
   uses-material-design: true
