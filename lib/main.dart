@@ -85,6 +85,9 @@ class _TestPageState extends State<TestPage> {
   String _info = 'Loading models...';
   String _result = '';
   Uint8List? _shown;
+  final _faceDet = FaceDetector(
+    options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.accurate, minFaceSize: 0.03));
 
   @override
   void initState() {
