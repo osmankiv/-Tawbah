@@ -125,15 +125,48 @@ class _TestPageState extends State<TestPage> {
       step = 'detect';
       final persons = decodePersons(run(_det!, toInput(full, 320)), full.width, full.height);
 
+      step = 'faces';
+      final tmp = File('${Directory.systemTemp.path}/frame.jpg')
+        ..writeAsBytesSync(img.encodeJpg(full));
+      final faces = await _faceDet.processImage(InputImage.fromFilePath(tmp.path));
+
       final out = full.clone();
-      final lines = <String>['persons: ${persons.length}'];
+      final th = max(4, full.width ~/ 300);
+      final lines = <String>['persons: ${persons.length}, faces: ${faces.length}'];
 
       for (final d in persons) {
         step = 'classify';
         final px = d.x0.toInt(), py = d.y0.toInt();
         final pw = max(1, (d.x1 - d.x0).toInt()), ph = max(1, (d.y1 - d.y0).toInt());
-        // مؤقتاً: أعلى 40% من الشخص بدل كاشف الوجه
-        final crop = img.copyCrop(full, x: px, y: py, width: pw, height: max(1, (ph * 0.4).toInt()));
+
+        Rect? face;
+        for (final f in faces) {
+          final c = f.boundingBox.center;
+          if (c.dx >= d.x0 && c.dx <= d.x1 && c.dy >= d.y0 && c.dy <= d.y1) {
+            if (face == null || f.boundingBox.width > face.width) face = f.boundingBox;
+          }
+        }
+
+        img.Image crop;
+        String src;
+        if (face != null) {
+          final pad = face.width * 0.25;
+          final cx0 = max(0, (face.left - pad).toInt());
+          final cy0 = max(0, (face.top - pad).toInt());
+          final cx1 = min(full.width, (face.right + pad).toInt());
+          final cy1 = min(full.height, (face.bottom + pad).toInt());
+          crop = img.copyCrop(full, x: cx0, y: cy0,
+              width: max(1, cx1 - cx0), height: max(1, cy1 - cy0));
+          src = 'face';
+          img.drawRect(out, x1: face.left.toInt(), y1: face.top.toInt(),
+              x2: face.right.toInt(), y2: face.bottom.toInt(),
+              color: img.ColorRgb8(255, 255, 255), thickness: max(2, th ~/ 2));
+        } else {
+          crop = img.copyCrop(full, x: px, y: py, width: pw,
+              height: max(1, (ph * 0.4).toInt()));
+          src = 'upper';
+        }
+
         final p = run(_cls!, toInput(crop, 224));
         final isMale = p[1] > p[0];
         final label = isMale ? 'male' : 'female';
@@ -141,10 +174,10 @@ class _TestPageState extends State<TestPage> {
         final color = isMale ? img.ColorRgb8(255, 140, 0) : img.ColorRgb8(255, 0, 255);
 
         step = 'draw';
-        img.drawRect(out, x1: px, y1: py, x2: px + pw, y2: py + ph, color: color, thickness: 4);
-        img.drawString(out, '$label ${conf.toStringAsFixed(2)}',
-            font: img.arial24, x: px + 6, y: py + 6, color: color);
-        lines.add('$label ${(conf * 100).toStringAsFixed(0)}%  (person ${(d.score * 100).toStringAsFixed(0)}%)');
+        img.drawRect(out, x1: px, y1: py, x2: px + pw, y2: py + ph, color: color, thickness: th);
+        img.drawString(out, '$label ${conf.toStringAsFixed(2)} ($src)',
+            font: img.arial48, x: px + 8, y: py + 8, color: color);
+        lines.add('$label ${(conf * 100).toStringAsFixed(0)}%  [$src]  (person ${(d.score * 100).toStringAsFixed(0)}%)');
       }
 
       setState(() {
