@@ -20,3 +20,4 @@ flutter:
   assets:
     - assets/models/gender_cls_float32.tflite
     - assets/models/person_det_320.tflite
+    - assets/models/face_det_320.tflite
