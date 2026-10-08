@@ -80,14 +80,18 @@ List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   return keep;
 }
 
-// تمويه سريع: تصغير المنطقة ثم تكبيرها
+// تمويه فائق السرعة لكامل الجسم عبر تصغير دقيق ومباشر للمنطقة
 void blurRegion(img.Image dst, int x, int y, int w, int h) {
+  x = x.clamp(0, dst.width - 1);
+  y = y.clamp(0, dst.height - 1);
+  w = w.clamp(1, dst.width - x);
+  h = h.clamp(1, dst.height - y);
+
   final region = img.copyCrop(dst, x: x, y: y, width: w, height: h);
-  final small = img.copyResize(region,
-      width: max(2, w ~/ 24), height: max(2, h ~/ 24),
-      interpolation: img.Interpolation.average);
-  final big = img.copyResize(small,
-      width: w, height: h, interpolation: img.Interpolation.linear);
+  final smallW = max(4, w ~/ 20);
+  final smallH = max(4, h ~/ 20);
+  final small = img.copyResize(region, width: smallW, height: smallH, interpolation: img.Interpolation.average);
+  final big = img.copyResize(small, width: w, height: h, interpolation: img.Interpolation.nearest);
   img.compositeImage(dst, big, dstX: x, dstY: y);
 }
 
@@ -102,7 +106,7 @@ class _TestPageState extends State<TestPage> {
   String _info = 'Loading models...';
   String _result = '';
   Uint8List? _shown;
-  bool _blurMale = true; // true = تمويه الذكور، false = تمويه الإناث
+  bool _blurMale = true;
 
   @override
   void initState() {
@@ -154,7 +158,17 @@ class _TestPageState extends State<TestPage> {
       final tDecode = lap();
 
       step = 'detect';
-      final persons = decodeBoxes(run(_det!, toInput(full, 320)), full.width, full.height);
+      var persons = decodeBoxes(run(_det!, toInput(full, 320)), full.width, full.height);
+      
+      // ترتيب الكائنات بحيث يكون الأقرب لمركز الشاشة في البداية (Central Priority)
+      final centerX = full.width / 2.0;
+      final centerY = full.height / 2.0;
+      persons.sort((a, b) {
+        final distA = ((a.x0 + a.x1) / 2 - centerX).abs() + ((a.y0 + a.y1) / 2 - centerY).abs();
+        final distB = ((b.x0 + b.x1) / 2 - centerX).abs() + ((b.y0 + b.y1) / 2 - centerY).abs();
+        return distA.compareTo(distB);
+      });
+
       final tDet = lap();
 
       step = 'faces';
