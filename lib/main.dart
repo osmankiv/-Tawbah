@@ -1,6 +1,4 @@
 import 'dart:math';
-import 'dart:io';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -45,8 +43,9 @@ Float32List run(Interpreter it, Uint8List input) {
   return Uint8List.fromList(b).buffer.asFloat32List();
 }
 
-// مخرج الكاشف [1,84,2100]: الصفوف 0..3 للمربع، والصف 4 للصنف person
-List<Det> decodePersons(Float32List o, int w, int h, {double thr = 0.4}) {
+// مخرج الكاشف [1,C,2100]: الصفوف 0..3 للمربع (cx,cy,w,h) والصف 4 للدرجة.
+// يصلح لكاشف الأشخاص (C=84) ولكاشف الوجوه (C=5).
+List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   const n = 2100;
   bool norm = true;
   for (int i = 0; i < n; i++) {
@@ -81,13 +80,10 @@ class TestPage extends StatefulWidget {
 }
 
 class _TestPageState extends State<TestPage> {
-  Interpreter? _cls, _det;
+  Interpreter? _cls, _det, _face;
   String _info = 'Loading models...';
   String _result = '';
   Uint8List? _shown;
-  final _faceDet = FaceDetector(
-    options: FaceDetectorOptions(
-        performanceMode: FaceDetectorMode.accurate, minFaceSize: 0.03));
 
   @override
   void initState() {
@@ -99,11 +95,14 @@ class _TestPageState extends State<TestPage> {
     try {
       final cls = await Interpreter.fromAsset('assets/models/gender_cls_float32.tflite');
       final det = await Interpreter.fromAsset('assets/models/person_det_320.tflite');
+      final face = await Interpreter.fromAsset('assets/models/face_det_320.tflite');
       setState(() {
         _cls = cls;
         _det = det;
+        _face = face;
         _info = 'cls: ${cls.getInputTensor(0).shape} -> ${cls.getOutputTensor(0).shape}\n'
-            'det: ${det.getInputTensor(0).shape} -> ${det.getOutputTensor(0).shape}';
+            'det: ${det.getInputTensor(0).shape} -> ${det.getOutputTensor(0).shape}\n'
+            'face: ${face.getInputTensor(0).shape} -> ${face.getOutputTensor(0).shape}';
       });
     } catch (e) {
       setState(() => _info = 'Load failed: $e');
@@ -111,7 +110,7 @@ class _TestPageState extends State<TestPage> {
   }
 
   Future<void> _pick() async {
-    if (_cls == null || _det == null) return;
+    if (_cls == null || _det == null || _face == null) return;
     String step = 'pick';
     try {
       final x = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -123,12 +122,10 @@ class _TestPageState extends State<TestPage> {
       final full = img.bakeOrientation(decoded);
 
       step = 'detect';
-      final persons = decodePersons(run(_det!, toInput(full, 320)), full.width, full.height);
+      final persons = decodeBoxes(run(_det!, toInput(full, 320)), full.width, full.height);
 
       step = 'faces';
-      final tmp = File('${Directory.systemTemp.path}/frame.jpg')
-        ..writeAsBytesSync(img.encodeJpg(full));
-      final faces = await _faceDet.processImage(InputImage.fromFilePath(tmp.path));
+      final faces = decodeBoxes(run(_face!, toInput(full, 320)), full.width, full.height, thr: 0.3);
 
       final out = full.clone();
       final th = max(4, full.width ~/ 300);
@@ -139,27 +136,27 @@ class _TestPageState extends State<TestPage> {
         final px = d.x0.toInt(), py = d.y0.toInt();
         final pw = max(1, (d.x1 - d.x0).toInt()), ph = max(1, (d.y1 - d.y0).toInt());
 
-        Rect? face;
+        Det? face;
         for (final f in faces) {
-          final c = f.boundingBox.center;
-          if (c.dx >= d.x0 && c.dx <= d.x1 && c.dy >= d.y0 && c.dy <= d.y1) {
-            if (face == null || f.boundingBox.width > face.width) face = f.boundingBox;
+          final cx = (f.x0 + f.x1) / 2, cy = (f.y0 + f.y1) / 2;
+          if (cx >= d.x0 && cx <= d.x1 && cy >= d.y0 && cy <= d.y1) {
+            if (face == null || (f.x1 - f.x0) > (face.x1 - face.x0)) face = f;
           }
         }
 
         img.Image crop;
         String src;
         if (face != null) {
-          final pad = face.width * 0.25;
-          final cx0 = max(0, (face.left - pad).toInt());
-          final cy0 = max(0, (face.top - pad).toInt());
-          final cx1 = min(full.width, (face.right + pad).toInt());
-          final cy1 = min(full.height, (face.bottom + pad).toInt());
+          final pad = (face.x1 - face.x0) * 0.25;
+          final cx0 = max(0, (face.x0 - pad).toInt());
+          final cy0 = max(0, (face.y0 - pad).toInt());
+          final cx1 = min(full.width, (face.x1 + pad).toInt());
+          final cy1 = min(full.height, (face.y1 + pad).toInt());
           crop = img.copyCrop(full, x: cx0, y: cy0,
               width: max(1, cx1 - cx0), height: max(1, cy1 - cy0));
           src = 'face';
-          img.drawRect(out, x1: face.left.toInt(), y1: face.top.toInt(),
-              x2: face.right.toInt(), y2: face.bottom.toInt(),
+          img.drawRect(out, x1: face.x0.toInt(), y1: face.y0.toInt(),
+              x2: face.x1.toInt(), y2: face.y1.toInt(),
               color: img.ColorRgb8(255, 255, 255), thickness: max(2, th ~/ 2));
         } else {
           crop = img.copyCrop(full, x: px, y: py, width: pw,
