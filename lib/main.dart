@@ -12,6 +12,14 @@ class Det {
   Det(this.x0, this.y0, this.x1, this.y1, this.score);
 }
 
+class Res {
+  final Det person;
+  final Det? face;
+  final bool isMale;
+  final double conf;
+  Res(this.person, this.face, this.isMale, this.conf);
+}
+
 double iou(Det a, Det b) {
   final ix = max(0.0, min(a.x1, b.x1) - max(a.x0, b.x0));
   final iy = max(0.0, min(a.y1, b.y1) - max(a.y0, b.y0));
@@ -44,7 +52,6 @@ Float32List run(Interpreter it, Uint8List input) {
 }
 
 // مخرج الكاشف [1,C,2100]: الصفوف 0..3 للمربع (cx,cy,w,h) والصف 4 للدرجة.
-// يصلح لكاشف الأشخاص (C=84) ولكاشف الوجوه (C=5).
 List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   const n = 2100;
   bool norm = true;
@@ -73,6 +80,17 @@ List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   return keep;
 }
 
+// تمويه سريع: تصغير المنطقة ثم تكبيرها
+void blurRegion(img.Image dst, int x, int y, int w, int h) {
+  final region = img.copyCrop(dst, x: x, y: y, width: w, height: h);
+  final small = img.copyResize(region,
+      width: max(2, w ~/ 24), height: max(2, h ~/ 24),
+      interpolation: img.Interpolation.average);
+  final big = img.copyResize(small,
+      width: w, height: h, interpolation: img.Interpolation.linear);
+  img.compositeImage(dst, big, dstX: x, dstY: y);
+}
+
 class TestPage extends StatefulWidget {
   const TestPage({super.key});
   @override
@@ -84,6 +102,7 @@ class _TestPageState extends State<TestPage> {
   String _info = 'Loading models...';
   String _result = '';
   Uint8List? _shown;
+  bool _blurMale = true; // true = تمويه الذكور، false = تمويه الإناث
 
   @override
   void initState() {
@@ -93,9 +112,13 @@ class _TestPageState extends State<TestPage> {
 
   Future<void> _load() async {
     try {
-      final cls = await Interpreter.fromAsset('assets/models/gender_cls_float32.tflite');
-      final det = await Interpreter.fromAsset('assets/models/person_det_320.tflite');
-      final face = await Interpreter.fromAsset('assets/models/face_det_320.tflite');
+      InterpreterOptions opts() => InterpreterOptions()..threads = 4;
+      final cls = await Interpreter.fromAsset(
+          'assets/models/gender_cls_float32.tflite', options: opts());
+      final det = await Interpreter.fromAsset(
+          'assets/models/person_det_320.tflite', options: opts());
+      final face = await Interpreter.fromAsset(
+          'assets/models/face_det_320.tflite', options: opts());
       setState(() {
         _cls = cls;
         _det = det;
@@ -116,26 +139,31 @@ class _TestPageState extends State<TestPage> {
       final x = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (x == null) return;
 
+      final total = Stopwatch()..start();
+      final sw = Stopwatch()..start();
+      int lap() {
+        final t = sw.elapsedMilliseconds;
+        sw.reset();
+        return t;
+      }
+
       step = 'decode';
       final decoded = img.decodeImage(await x.readAsBytes());
       if (decoded == null) return;
       final full = img.bakeOrientation(decoded);
+      final tDecode = lap();
 
       step = 'detect';
       final persons = decodeBoxes(run(_det!, toInput(full, 320)), full.width, full.height);
+      final tDet = lap();
 
       step = 'faces';
       final faces = decodeBoxes(run(_face!, toInput(full, 320)), full.width, full.height, thr: 0.3);
+      final tFace = lap();
 
-      final out = full.clone();
-      final th = max(4, full.width ~/ 300);
-      final lines = <String>['persons: ${persons.length}, faces: ${faces.length}'];
-
+      step = 'classify';
+      final results = <Res>[];
       for (final d in persons) {
-        step = 'classify';
-        final px = d.x0.toInt(), py = d.y0.toInt();
-        final pw = max(1, (d.x1 - d.x0).toInt()), ph = max(1, (d.y1 - d.y0).toInt());
-
         Det? face;
         for (final f in faces) {
           final cx = (f.x0 + f.x1) / 2, cy = (f.y0 + f.y1) / 2;
@@ -143,9 +171,7 @@ class _TestPageState extends State<TestPage> {
             if (face == null || (f.x1 - f.x0) > (face.x1 - face.x0)) face = f;
           }
         }
-
         img.Image crop;
-        String src;
         if (face != null) {
           final pad = (face.x1 - face.x0) * 0.25;
           final cx0 = max(0, (face.x0 - pad).toInt());
@@ -154,28 +180,52 @@ class _TestPageState extends State<TestPage> {
           final cy1 = min(full.height, (face.y1 + pad).toInt());
           crop = img.copyCrop(full, x: cx0, y: cy0,
               width: max(1, cx1 - cx0), height: max(1, cy1 - cy0));
-          src = 'face';
-          img.drawRect(out, x1: face.x0.toInt(), y1: face.y0.toInt(),
-              x2: face.x1.toInt(), y2: face.y1.toInt(),
-              color: img.ColorRgb8(255, 255, 255), thickness: max(2, th ~/ 2));
         } else {
-          crop = img.copyCrop(full, x: px, y: py, width: pw,
-              height: max(1, (ph * 0.4).toInt()));
-          src = 'upper';
+          crop = img.copyCrop(full, x: d.x0.toInt(), y: d.y0.toInt(),
+              width: max(1, (d.x1 - d.x0).toInt()),
+              height: max(1, ((d.y1 - d.y0) * 0.4).toInt()));
         }
-
         final p = run(_cls!, toInput(crop, 224));
-        final isMale = p[1] > p[0];
-        final label = isMale ? 'male' : 'female';
-        final conf = max(p[0], p[1]);
-        final color = isMale ? img.ColorRgb8(255, 140, 0) : img.ColorRgb8(255, 0, 255);
-
-        step = 'draw';
-        img.drawRect(out, x1: px, y1: py, x2: px + pw, y2: py + ph, color: color, thickness: th);
-        img.drawString(out, '$label ${conf.toStringAsFixed(2)} ($src)',
-            font: img.arial48, x: px + 8, y: py + 8, color: color);
-        lines.add('$label ${(conf * 100).toStringAsFixed(0)}%  [$src]  (person ${(d.score * 100).toStringAsFixed(0)}%)');
+        results.add(Res(d, face, p[1] > p[0], max(p[0], p[1])));
       }
+      final tCls = lap();
+
+      step = 'blur';
+      final out = full.clone();
+      for (final r in results) {
+        if (r.isMale == _blurMale) {
+          final px = r.person.x0.toInt(), py = r.person.y0.toInt();
+          blurRegion(out, px, py,
+              max(1, (r.person.x1 - r.person.x0).toInt()),
+              max(1, (r.person.y1 - r.person.y0).toInt()));
+        }
+      }
+      final tBlur = lap();
+
+      step = 'draw';
+      final th = max(4, full.width ~/ 300);
+      final lines = <String>['persons: ${persons.length}, faces: ${faces.length}'];
+      for (final r in results) {
+        final d = r.person;
+        final label = r.isMale ? 'male' : 'female';
+        final blurred = r.isMale == _blurMale;
+        final color = r.isMale ? img.ColorRgb8(255, 140, 0) : img.ColorRgb8(255, 0, 255);
+        img.drawRect(out, x1: d.x0.toInt(), y1: d.y0.toInt(),
+            x2: d.x1.toInt(), y2: d.y1.toInt(), color: color, thickness: th);
+        img.drawString(out,
+            '$label ${r.conf.toStringAsFixed(2)}${blurred ? ' [blur]' : ''}',
+            font: img.arial48, x: d.x0.toInt() + 8, y: d.y0.toInt() + 8, color: color);
+        final fpx = r.face != null ? 'face ${(r.face!.x1 - r.face!.x0).toInt()}px' : 'upper';
+        lines.add('$label ${(r.conf * 100).toStringAsFixed(0)}%  [$fpx]${blurred ? '  <- blurred' : ''}');
+      }
+      final tDraw = lap();
+
+      lines.add('');
+      lines.add('image: ${full.width}x${full.height}');
+      lines.add('decode $tDecode ms | person-det $tDet ms');
+      lines.add('face-det $tFace ms | classify $tCls ms');
+      lines.add('blur $tBlur ms | draw $tDraw ms');
+      lines.add('TOTAL ${total.elapsedMilliseconds} ms');
 
       setState(() {
         _shown = Uint8List.fromList(img.encodeJpg(out));
@@ -195,11 +245,20 @@ class _TestPageState extends State<TestPage> {
         child: ListView(children: [
           Text(_info),
           const SizedBox(height: 12),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('تمويه الذكور')),
+              ButtonSegment(value: false, label: Text('تمويه الإناث')),
+            ],
+            selected: {_blurMale},
+            onSelectionChanged: (s) => setState(() => _blurMale = s.first),
+          ),
+          const SizedBox(height: 12),
           ElevatedButton(onPressed: _pick, child: const Text('Pick image')),
           const SizedBox(height: 12),
           if (_shown != null) Image.memory(_shown!),
           const SizedBox(height: 12),
-          Text(_result, style: const TextStyle(fontSize: 18)),
+          Text(_result, style: const TextStyle(fontSize: 16)),
         ]),
       ),
     );
