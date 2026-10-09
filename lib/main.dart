@@ -81,6 +81,7 @@ List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
 }
 
 // تمويه فائق السرعة لكامل الجسم عبر تصغير دقيق ومباشر للمنطقة
+// تمويه فائق السرعة عبر القسمة على 60 لتصغير البكسلات
 void blurRegion(img.Image dst, int x, int y, int w, int h) {
   x = x.clamp(0, dst.width - 1);
   y = y.clamp(0, dst.height - 1);
@@ -88,8 +89,8 @@ void blurRegion(img.Image dst, int x, int y, int w, int h) {
   h = h.clamp(1, dst.height - y);
 
   final region = img.copyCrop(dst, x: x, y: y, width: w, height: h);
-  final smallW = max(4, w ~/ 20);
-  final smallH = max(4, h ~/ 20);
+  final smallW = max(2, w ~/ 60);
+  final smallH = max(2, h ~/ 60);
   final small = img.copyResize(region, width: smallW, height: smallH, interpolation: img.Interpolation.average);
   final big = img.copyResize(small, width: w, height: h, interpolation: img.Interpolation.nearest);
   img.compositeImage(dst, big, dstX: x, dstY: y);
