@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter/services.dart';
 
 void main() => runApp(const MaterialApp(home: TestPage()));
 
@@ -107,6 +108,7 @@ class _TestPageState extends State<TestPage> {
   String _result = '';
   Uint8List? _shown;
   bool _blurMale = true;
+  static const platform = MethodChannel('com.osman.tawbah/screen');
 
   @override
   void initState() {
@@ -132,11 +134,72 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
+  // طلب إذن التقاط الشاشة
+  Future<void> _requestScreenPermission() async {
+    try {
+      final bool granted = await platform.invokeMethod('requestScreenCapture');
+      if (granted) {
+        setState(() => _info = 'تم منح إذن التقاط الشاشة بنجاح!');
+      } else {
+        setState(() => _info = 'تم رفض إذن التقاط الشاشة.');
+      }
+    } on PlatformException catch (e) {
+      setState(() => _info = "خطأ النظام: '${e.message}'.");
+    }
+  }
+
+  // التقاط ومعالجة الشاشة الحية
+  Future<void> _captureAndProcessScreen() async {
+    if (_cls == null || _det == null) return;
+    try {
+      final Uint8List? bytes = await platform.invokeMethod('captureScreen');
+      if (bytes == null) {
+        setState(() => _result = 'لم يتم استلام أي إطار من الشاشة.');
+        return;
+      }
+
+      final total = Stopwatch()..start();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return;
+      final full = img.bakeOrientation(decoded);
+
+      var persons = decodeBoxes(run(_det!, toInput(full, 320)), full.width, full.height);
+
+      final results = <Res>[];
+      for (final d in persons) {
+        final crop = img.copyCrop(full,
+            x: d.x0.toInt(),
+            y: d.y0.toInt(),
+            width: max(1, (d.x1 - d.x0).toInt()),
+            height: max(1, ((d.y1 - d.y0) * 0.4).toInt()));
+        
+        final p = run(_cls!, toInput(crop, 224));
+        results.add(Res(d, p[1] > p[0], max(p[0], p[1])));
+      }
+
+      final out = full.clone();
+      for (final r in results) {
+        if (r.isMale == _blurMale) {
+          final px = r.person.x0.toInt(), py = r.person.y0.toInt();
+          blurRegion(out, px, py,
+              max(1, (r.person.x1 - r.person.x0).toInt()),
+              max(1, (r.person.y1 - r.person.y0).toInt()));
+        }
+      }
+
+      setState(() {
+        _shown = Uint8List.fromList(img.encodeJpg(out, quality: 70));
+        _result = 'معالجة الشاشة الحية: ${total.elapsedMilliseconds}ms\nالأشخاص: ${persons.length}';
+      });
+    } on PlatformException catch (e) {
+      setState(() => _result = 'خطأ التقاط الشاشة: ${e.message}');
+    }
+  }
+
   Future<void> _pick() async {
     if (_cls == null || _det == null) return;
     String step = 'pick';
     try {
-      // تقييد الأبعاد بحد أقصى 640 بكسل لتسريع الفك والمعالجة بشكل دراماتيكي
       final x = await ImagePicker().pickImage(
         source: ImageSource.gallery,
         maxWidth: 640,
@@ -161,7 +224,6 @@ class _TestPageState extends State<TestPage> {
       step = 'detect';
       var persons = decodeBoxes(run(_det!, toInput(full, 320)), full.width, full.height);
       
-      // ترتيب الكائنات بحيث يكون الأقرب لمركز الشاشة في البداية (Central Priority)
       final centerX = full.width / 2.0;
       final centerY = full.height / 2.0;
       persons.sort((a, b) {
@@ -174,7 +236,6 @@ class _TestPageState extends State<TestPage> {
       step = 'classify';
       final results = <Res>[];
       for (final d in persons) {
-        // اقتصاص الجزء العلوي مباشرة لتصنيف الجنس بدون الحاجة لنموذج الوجوه
         final crop = img.copyCrop(full,
             x: d.x0.toInt(),
             y: d.y0.toInt(),
@@ -249,6 +310,18 @@ class _TestPageState extends State<TestPage> {
           ),
           const SizedBox(height: 12),
           ElevatedButton(onPressed: _pick, child: const Text('Pick image')),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _requestScreenPermission,
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('طلب إذن التقاط الشاشة'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _captureAndProcessScreen,
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('التقاط ومعالجة الشاشة الحالية'),
+          ),
           const SizedBox(height: 12),
           if (_shown != null) Image.memory(_shown!),
           const SizedBox(height: 12),
