@@ -56,7 +56,10 @@ List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   const n = 2100;
   bool norm = true;
   for (int i = 0; i < n; i++) {
-    if (o[2 * n + i] > 1.5) { norm = false; break; }
+    if (o[2 * n + i] > 1.5) {
+      norm = false;
+      break;
+    }
   }
   final s = norm ? 320.0 : 1.0;
   final raw = <Det>[];
@@ -81,7 +84,6 @@ List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
 }
 
 // تمويه فائق السرعة لكامل الجسم عبر تصغير دقيق ومباشر للمنطقة
-// تمويه فائق السرعة عبر القسمة على 60 لتصغير البكسلات
 void blurRegion(img.Image dst, int x, int y, int w, int h) {
   x = x.clamp(0, dst.width - 1);
   y = y.clamp(0, dst.height - 1);
@@ -141,7 +143,12 @@ class _TestPageState extends State<TestPage> {
     if (_cls == null || _det == null || _face == null) return;
     String step = 'pick';
     try {
-      final x = await ImagePicker().pickImage(source: ImageSource.gallery);
+      // تقييد الأبعاد عند الالتقاط لتفادي معالجة الصور ذات الدقة العالية جداً
+      final x = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
       if (x == null) return;
 
       final total = Stopwatch()..start();
@@ -218,7 +225,7 @@ class _TestPageState extends State<TestPage> {
       final tBlur = lap();
 
       step = 'draw';
-      final th = max(4, full.width ~/ 300);
+      final th = max(2, full.width ~/ 300);
       final lines = <String>['persons: ${persons.length}, faces: ${faces.length}'];
       for (final r in results) {
         final d = r.person;
@@ -229,7 +236,7 @@ class _TestPageState extends State<TestPage> {
             x2: d.x1.toInt(), y2: d.y1.toInt(), color: color, thickness: th);
         img.drawString(out,
             '$label ${r.conf.toStringAsFixed(2)}${blurred ? ' [blur]' : ''}',
-            font: img.arial48, x: d.x0.toInt() + 8, y: d.y0.toInt() + 8, color: color);
+            font: img.arial24, x: d.x0.toInt() + 4, y: d.y0.toInt() + 4, color: color);
         final fpx = r.face != null ? 'face ${(r.face!.x1 - r.face!.x0).toInt()}px' : 'upper';
         lines.add('$label ${(r.conf * 100).toStringAsFixed(0)}%  [$fpx]${blurred ? '  <- blurred' : ''}');
       }
@@ -243,7 +250,7 @@ class _TestPageState extends State<TestPage> {
       lines.add('TOTAL ${total.elapsedMilliseconds} ms');
 
       setState(() {
-        _shown = Uint8List.fromList(img.encodeJpg(out));
+        _shown = Uint8List.fromList(img.encodeJpg(out, quality: 80));
         _result = lines.join('\n');
       });
     } catch (e) {
