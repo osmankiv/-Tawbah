@@ -16,8 +16,6 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Generate fresh android project
-        run: flutter create --platforms=android --org com.osman --project-name tawbah .
       - name: Patch android config
         run: |
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
