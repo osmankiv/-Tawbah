@@ -14,10 +14,9 @@ class Det {
 
 class Res {
   final Det person;
-  final Det? face;
   final bool isMale;
   final double conf;
-  Res(this.person, this.face, this.isMale, this.conf);
+  Res(this.person, this.isMale, this.conf);
 }
 
 double iou(Det a, Det b) {
@@ -51,7 +50,6 @@ Float32List run(Interpreter it, Uint8List input) {
   return Uint8List.fromList(b).buffer.asFloat32List();
 }
 
-// مخرج الكاشف [1,C,2100]: الصفوف 0..3 للمربع (cx,cy,w,h) والصف 4 للدرجة.
 List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   const n = 2100;
   bool norm = true;
@@ -83,7 +81,6 @@ List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
   return keep;
 }
 
-// تمويه فائق السرعة لكامل الجسم عبر تصغير دقيق ومباشر للمنطقة
 void blurRegion(img.Image dst, int x, int y, int w, int h) {
   x = x.clamp(0, dst.width - 1);
   y = y.clamp(0, dst.height - 1);
@@ -105,7 +102,7 @@ class TestPage extends StatefulWidget {
 }
 
 class _TestPageState extends State<TestPage> {
-  Interpreter? _cls, _det, _face;
+  Interpreter? _cls, _det;
   String _info = 'Loading models...';
   String _result = '';
   Uint8List? _shown;
@@ -124,15 +121,11 @@ class _TestPageState extends State<TestPage> {
           'assets/models/gender_cls_float32.tflite', options: opts());
       final det = await Interpreter.fromAsset(
           'assets/models/person_det_320.tflite', options: opts());
-      final face = await Interpreter.fromAsset(
-          'assets/models/face_det_320.tflite', options: opts());
       setState(() {
         _cls = cls;
         _det = det;
-        _face = face;
         _info = 'cls: ${cls.getInputTensor(0).shape} -> ${cls.getOutputTensor(0).shape}\n'
-            'det: ${det.getInputTensor(0).shape} -> ${det.getOutputTensor(0).shape}\n'
-            'face: ${face.getInputTensor(0).shape} -> ${face.getOutputTensor(0).shape}';
+            'det: ${det.getInputTensor(0).shape} -> ${det.getOutputTensor(0).shape}';
       });
     } catch (e) {
       setState(() => _info = 'Load failed: $e');
@@ -140,14 +133,14 @@ class _TestPageState extends State<TestPage> {
   }
 
   Future<void> _pick() async {
-    if (_cls == null || _det == null || _face == null) return;
+    if (_cls == null || _det == null) return;
     String step = 'pick';
     try {
-      // تقييد الأبعاد عند الالتقاط لتفادي معالجة الصور ذات الدقة العالية جداً
+      // تقييد الأبعاد بحد أقصى 640 بكسل لتسريع الفك والمعالجة بشكل دراماتيكي
       final x = await ImagePicker().pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
+        maxWidth: 640,
+        maxHeight: 640,
       );
       if (x == null) return;
 
@@ -176,39 +169,20 @@ class _TestPageState extends State<TestPage> {
         final distB = ((b.x0 + b.x1) / 2 - centerX).abs() + ((b.y0 + b.y1) / 2 - centerY).abs();
         return distA.compareTo(distB);
       });
-
       final tDet = lap();
-
-      step = 'faces';
-      final faces = decodeBoxes(run(_face!, toInput(full, 320)), full.width, full.height, thr: 0.3);
-      final tFace = lap();
 
       step = 'classify';
       final results = <Res>[];
       for (final d in persons) {
-        Det? face;
-        for (final f in faces) {
-          final cx = (f.x0 + f.x1) / 2, cy = (f.y0 + f.y1) / 2;
-          if (cx >= d.x0 && cx <= d.x1 && cy >= d.y0 && cy <= d.y1) {
-            if (face == null || (f.x1 - f.x0) > (face.x1 - face.x0)) face = f;
-          }
-        }
-        img.Image crop;
-        if (face != null) {
-          final pad = (face.x1 - face.x0) * 0.25;
-          final cx0 = max(0, (face.x0 - pad).toInt());
-          final cy0 = max(0, (face.y0 - pad).toInt());
-          final cx1 = min(full.width, (face.x1 + pad).toInt());
-          final cy1 = min(full.height, (face.y1 + pad).toInt());
-          crop = img.copyCrop(full, x: cx0, y: cy0,
-              width: max(1, cx1 - cx0), height: max(1, cy1 - cy0));
-        } else {
-          crop = img.copyCrop(full, x: d.x0.toInt(), y: d.y0.toInt(),
-              width: max(1, (d.x1 - d.x0).toInt()),
-              height: max(1, ((d.y1 - d.y0) * 0.4).toInt()));
-        }
+        // اقتصاص الجزء العلوي مباشرة لتصنيف الجنس بدون الحاجة لنموذج الوجوه
+        final crop = img.copyCrop(full,
+            x: d.x0.toInt(),
+            y: d.y0.toInt(),
+            width: max(1, (d.x1 - d.x0).toInt()),
+            height: max(1, ((d.y1 - d.y0) * 0.4).toInt()));
+        
         final p = run(_cls!, toInput(crop, 224));
-        results.add(Res(d, face, p[1] > p[0], max(p[0], p[1])));
+        results.add(Res(d, p[1] > p[0], max(p[0], p[1])));
       }
       final tCls = lap();
 
@@ -226,7 +200,7 @@ class _TestPageState extends State<TestPage> {
 
       step = 'draw';
       final th = max(2, full.width ~/ 300);
-      final lines = <String>['persons: ${persons.length}, faces: ${faces.length}'];
+      final lines = <String>['persons: ${persons.length}'];
       for (final r in results) {
         final d = r.person;
         final label = r.isMale ? 'male' : 'female';
@@ -237,16 +211,14 @@ class _TestPageState extends State<TestPage> {
         img.drawString(out,
             '$label ${r.conf.toStringAsFixed(2)}${blurred ? ' [blur]' : ''}',
             font: img.arial24, x: d.x0.toInt() + 4, y: d.y0.toInt() + 4, color: color);
-        final fpx = r.face != null ? 'face ${(r.face!.x1 - r.face!.x0).toInt()}px' : 'upper';
-        lines.add('$label ${(r.conf * 100).toStringAsFixed(0)}%  [$fpx]${blurred ? '  <- blurred' : ''}');
+        lines.add('$label ${(r.conf * 100).toStringAsFixed(0)}%  [upper]${blurred ? '  <- blurred' : ''}');
       }
       final tDraw = lap();
 
       lines.add('');
       lines.add('image: ${full.width}x${full.height}');
       lines.add('decode $tDecode ms | person-det $tDet ms');
-      lines.add('face-det $tFace ms | classify $tCls ms');
-      lines.add('blur $tBlur ms | draw $tDraw ms');
+      lines.add('classify $tCls ms | blur $tBlur ms | draw $tDraw ms');
       lines.add('TOTAL ${total.elapsedMilliseconds} ms');
 
       setState(() {
