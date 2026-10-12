@@ -6,6 +6,11 @@
         android:label="tawbah"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+     <service
+    android:name=".ScreenService"
+    android:foregroundServiceType="mediaProjection"
+    android:exported="false" />
+   
         <activity
             android:name=".MainActivity"
             android:exported="true"
