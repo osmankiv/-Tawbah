@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -108,12 +109,23 @@ class _TestPageState extends State<TestPage> {
   String _result = '';
   Uint8List? _shown;
   bool _blurMale = true;
+  
+  // متغيرات المعالجة التلقائية والخلفية
+  Timer? _autoTimer;
+  bool _isAutoRunning = false;
+
   static const platform = MethodChannel('com.osman.tawbah/screen');
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _autoTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -148,15 +160,12 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
-  // التقاط ومعالجة الشاشة الحية
+  // التقاط ومعالجة الشاشة الحية (مرة واحدة)
   Future<void> _captureAndProcessScreen() async {
     if (_cls == null || _det == null) return;
     try {
       final Uint8List? bytes = await platform.invokeMethod('captureScreen');
-      if (bytes == null) {
-        setState(() => _result = 'لم يتم استلام أي إطار من الشاشة.');
-        return;
-      }
+      if (bytes == null) return;
 
       final total = Stopwatch()..start();
       final decoded = img.decodeImage(bytes);
@@ -189,10 +198,34 @@ class _TestPageState extends State<TestPage> {
 
       setState(() {
         _shown = Uint8List.fromList(img.encodeJpg(out, quality: 70));
-        _result = 'معالجة الشاشة الحية: ${total.elapsedMilliseconds}ms\nالأشخاص: ${persons.length}';
+        _result = 'المعالجة الحية: ${total.elapsedMilliseconds}ms | الأشخاص: ${persons.length}';
       });
     } on PlatformException catch (e) {
       setState(() => _result = 'خطأ التقاط الشاشة: ${e.message}');
+    }
+  }
+
+  // تشغيل أو إيقاف حلقة المعالجة التلقائية المستمرة
+  void _toggleAutoProcessing() {
+    if (_isAutoRunning) {
+      _autoTimer?.cancel();
+      setState(() {
+        _isAutoRunning = false;
+        _info = 'تم إيقاف المعالجة التلقائية.';
+      });
+    } else {
+      setState(() {
+        _isAutoRunning = true;
+        _info = 'المعالجة التلقائية تعمل في الخلفية الآن...';
+      });
+      // التقاط ومعالجة كل ثانية (1000ms) بشكل تلقائي مستمر
+      _autoTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
+        if (_isAutoRunning) {
+          await _captureAndProcessScreen();
+        } else {
+          timer.cancel();
+        }
+      });
     }
   }
 
@@ -320,7 +353,15 @@ class _TestPageState extends State<TestPage> {
           ElevatedButton(
             onPressed: _captureAndProcessScreen,
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('التقاط ومعالجة الشاشة الحالية'),
+            child: const Text('التقاط ومعالجة الشاشة الحالية (مرة واحدة)'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _toggleAutoProcessing,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isAutoRunning ? Colors.red : Colors.purple,
+            ),
+            child: Text(_isAutoRunning ? 'إيقاف المعالجة التلقائية' : 'تشغيل المعالجة التلقائية المستمرة'),
           ),
           const SizedBox(height: 12),
           if (_shown != null) Image.memory(_shown!),
