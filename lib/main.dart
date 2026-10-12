@@ -280,7 +280,8 @@ class _TestPageState extends State<TestPage> {
         await FlutterOverlayWindow.showOverlay(
           height: WindowSize.matchParent,
           width: WindowSize.matchParent,
-          flag: OverlayFlag.defaultFlag,
+          // استخدام clickThrough للسماح بمرور اللمسات وتحريك الشاشة بشكل طبيعي
+          flag: OverlayFlag.clickThrough,
           alignment: OverlayAlignment.center,
           positionGravity: PositionGravity.none,
         );
