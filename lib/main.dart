@@ -8,7 +8,54 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
 
 void main() => runApp(const MaterialApp(home: TestPage()));
+@pragma("vm:entry-point")
+void overlayMain() {
+  runApp(const MaterialApp(
+      debugShowCheckedModeBanner: false,
+          home: OverlayScreen(),
+            ));
+            }
 
+            // واجهة النافذة العائمة التي ستظهر فوق التطبيقات الأخرى
+            class OverlayScreen extends StatefulWidget {
+              const OverlayScreen({super.key});
+
+                @override
+                  State<OverlayScreen> createState() => _OverlayScreenState();
+                  }
+
+                  class _OverlayScreenState extends State<OverlayScreen> {
+                    Uint8List? _overlayBytes;
+
+                      @override
+                        void initState() {
+                            super.initState();
+                                // استقبال الصور المعالجة من التطبيق الرئيسي عبر الـ Stream
+                                    FlutterOverlayWindow.overlayListener.listen((event) {
+                                          if (event is Uint8List) {
+                                                  setState(() {
+                                                            _overlayBytes = event;
+                                                                    });
+                                                                          }
+                                                                              });
+                                                                                }
+
+                                                                                  @override
+                                                                                    Widget build(BuildContext context) {
+                                                                                        return Material(
+                                                                                              color: Colors.transparent,
+                                                                                                    child: _overlayBytes == null
+                                                                                                              ? Container(color: Colors.transparent) // شفافة تماماً إذا لم تكن هناك صورة
+                                                                                                                        : Image.memory(
+                                                                                                                                      _overlayBytes!,
+                                                                                                                                                    fit: BoxFit.fill,
+                                                                                                                                                                  width: double.infinity,
+                                                                                                                                                                                height: double.infinity,
+                                                                                                                                                                                            ),
+                                                                                                                                                                                                );
+                                                                                                                                                                                                  }
+                                                                                                                                                                                                  }
+                                                                                                                                                                                                  
 class Det {
   final double x0, y0, x1, y1, score;
   Det(this.x0, this.y0, this.x1, this.y1, this.score);
