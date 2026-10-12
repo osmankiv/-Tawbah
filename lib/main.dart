@@ -2,60 +2,62 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
 
-void main() => runApp(const MaterialApp(home: TestPage()));
+// نقطة الدخول الخاصة بالنافذة العائمة لتغطية الشاشة خارج التطبيق
 @pragma("vm:entry-point")
 void overlayMain() {
   runApp(const MaterialApp(
-      debugShowCheckedModeBanner: false,
-          home: OverlayScreen(),
-            ));
-            }
+    debugShowCheckedModeBanner: false,
+    home: OverlayScreen(),
+  ));
+}
 
-            // واجهة النافذة العائمة التي ستظهر فوق التطبيقات الأخرى
-            class OverlayScreen extends StatefulWidget {
-              const OverlayScreen({super.key});
+class OverlayScreen extends StatefulWidget {
+  const OverlayScreen({super.key});
 
-                @override
-                  State<OverlayScreen> createState() => _OverlayScreenState();
-                  }
+  @override
+  State<OverlayScreen> createState() => _OverlayScreenState();
+}
 
-                  class _OverlayScreenState extends State<OverlayScreen> {
-                    Uint8List? _overlayBytes;
+class _OverlayScreenState extends State<OverlayScreen> {
+  Uint8List? _overlayBytes;
 
-                      @override
-                        void initState() {
-                            super.initState();
-                                // استقبال الصور المعالجة من التطبيق الرئيسي عبر الـ Stream
-                                    FlutterOverlayWindow.overlayListener.listen((event) {
-                                          if (event is Uint8List) {
-                                                  setState(() {
-                                                            _overlayBytes = event;
-                                                                    });
-                                                                          }
-                                                                              });
-                                                                                }
+  @override
+  void initState() {
+    super.initState();
+    // استقبال الصور المعالجة من التطبيق الرئيسي وبثها فوق التطبيقات الأخرى
+    FlutterOverlayWindow.overlayListener.listen((event) {
+      if (event is Uint8List) {
+        setState(() {
+          _overlayBytes = event;
+        });
+      }
+    });
+  }
 
-                                                                                  @override
-                                                                                    Widget build(BuildContext context) {
-                                                                                        return Material(
-                                                                                              color: Colors.transparent,
-                                                                                                    child: _overlayBytes == null
-                                                                                                              ? Container(color: Colors.transparent) // شفافة تماماً إذا لم تكن هناك صورة
-                                                                                                                        : Image.memory(
-                                                                                                                                      _overlayBytes!,
-                                                                                                                                                    fit: BoxFit.fill,
-                                                                                                                                                                  width: double.infinity,
-                                                                                                                                                                                height: double.infinity,
-                                                                                                                                                                                            ),
-                                                                                                                                                                                                );
-                                                                                                                                                                                                  }
-                                                                                                                                                                                                  }
-                                                                                                                                                                                                  
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: _overlayBytes == null
+          ? Container(color: Colors.transparent)
+          : Image.memory(
+              _overlayBytes!,
+              fit: BoxFit.fill,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+    );
+  }
+}
+
+void main() => runApp(const MaterialApp(home: TestPage()));
+
 class Det {
   final double x0, y0, x1, y1, score;
   Det(this.x0, this.y0, this.x1, this.y1, this.score);
@@ -157,7 +159,6 @@ class _TestPageState extends State<TestPage> {
   Uint8List? _shown;
   bool _blurMale = true;
   
-  // متغيرات المعالجة التلقائية والخلفية
   Timer? _autoTimer;
   bool _isAutoRunning = false;
 
@@ -193,7 +194,6 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
-  // طلب إذن التقاط الشاشة
   Future<void> _requestScreenPermission() async {
     try {
       final bool granted = await platform.invokeMethod('requestScreenCapture');
@@ -207,7 +207,13 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
-  // التقاط ومعالجة الشاشة الحية (مرة واحدة)
+  Future<void> _checkAndRequestOverlayPermission() async {
+    final bool isGranted = await FlutterOverlayWindow.isPermissionGranted();
+    if (!isGranted) {
+      await FlutterOverlayWindow.requestPermission();
+    }
+  }
+
   Future<void> _captureAndProcessScreen() async {
     if (_cls == null || _det == null) return;
     try {
@@ -243,8 +249,15 @@ class _TestPageState extends State<TestPage> {
         }
       }
 
+      final encodedJpg = Uint8List.fromList(img.encodeJpg(out, quality: 70));
+      
+      // إرسال الصورة للنافذة العائمة لتظهر فوق التطبيقات الأخرى
+      if (_isAutoRunning) {
+        await FlutterOverlayWindow.shareData(encodedJpg);
+      }
+
       setState(() {
-        _shown = Uint8List.fromList(img.encodeJpg(out, quality: 70));
+        _shown = encodedJpg;
         _result = 'المعالجة الحية: ${total.elapsedMilliseconds}ms | الأشخاص: ${persons.length}';
       });
     } on PlatformException catch (e) {
@@ -252,20 +265,32 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
-  // تشغيل أو إيقاف حلقة المعالجة التلقائية المستمرة
-  void _toggleAutoProcessing() {
+  void _toggleAutoProcessing() async {
     if (_isAutoRunning) {
       _autoTimer?.cancel();
+      await FlutterOverlayWindow.closeOverlay();
       setState(() {
         _isAutoRunning = false;
-        _info = 'تم إيقاف المعالجة التلقائية.';
+        _info = 'تم إيقاف المعالجة التلقائية والنافذة العائمة.';
       });
     } else {
+      await _checkAndRequestOverlayPermission();
+      
+      if (await FlutterOverlayWindow.isActive() == false) {
+        await FlutterOverlayWindow.showOverlay(
+          height: WindowSize.matchParent,
+          width: WindowSize.matchParent,
+          flag: OverlayFlag.defaultFlag,
+          alignment: OverlayAlignment.center,
+          positionGravity: PositionGravity.none,
+        );
+      }
+
       setState(() {
         _isAutoRunning = true;
-        _info = 'المعالجة التلقائية تعمل في الخلفية الآن...';
+        _info = 'المعالجة التلقائية والنافذة العائمة تعملان الآن...';
       });
-      // التقاط ومعالجة كل ثانية (1000ms) بشكل تلقائي مستمر
+
       _autoTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
         if (_isAutoRunning) {
           await _captureAndProcessScreen();
@@ -408,7 +433,7 @@ class _TestPageState extends State<TestPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: _isAutoRunning ? Colors.red : Colors.purple,
             ),
-            child: Text(_isAutoRunning ? 'إيقاف المعالجة التلقائية' : 'تشغيل المعالجة التلقائية المستمرة'),
+            child: Text(_isAutoRunning ? 'إيقاف المعالجة التلقائية' : 'تشغيل المعالجة التلقائية المستمرة والنافذة العائمة'),
           ),
           const SizedBox(height: 12),
           if (_shown != null) Image.memory(_shown!),
