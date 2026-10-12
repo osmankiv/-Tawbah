@@ -101,7 +101,7 @@ Float32List run(Interpreter it, Uint8List input) {
   return Uint8List.fromList(b).buffer.asFloat32List();
 }
 
-List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.4}) {
+List<Det> decodeBoxes(Float32List o, int w, int h, {double thr = 0.3}) {
   const n = 2100;
   bool norm = true;
   for (int i = 0; i < n; i++) {
@@ -249,9 +249,18 @@ class _TestPageState extends State<TestPage> {
         }
       }
 
+      // رسم عدد الأشخاص وحالة التمويه في أعلى الشاشة مباشرة لترى النتائج بوضوح
+      img.drawString(
+        out,
+        'Persons: ${persons.length} | Blur: ${_blurMale ? "Male" : "Female"}',
+        font: img.arial24,
+        x: 20,
+        y: 20,
+        color: img.ColorRgb8(0, 255, 0),
+      );
+
       final encodedJpg = Uint8List.fromList(img.encodeJpg(out, quality: 70));
       
-      // إرسال الصورة للنافذة العائمة لتظهر فوق التطبيقات الأخرى
       if (_isAutoRunning) {
         await FlutterOverlayWindow.shareData(encodedJpg);
       }
@@ -280,7 +289,6 @@ class _TestPageState extends State<TestPage> {
         await FlutterOverlayWindow.showOverlay(
           height: WindowSize.matchParent,
           width: WindowSize.matchParent,
-          // استخدام clickThrough للسماح بمرور اللمسات وتحريك الشاشة بشكل طبيعي
           flag: OverlayFlag.clickThrough,
           alignment: OverlayAlignment.center,
           positionGravity: PositionGravity.none,
