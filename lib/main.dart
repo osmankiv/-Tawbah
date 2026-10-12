@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -30,9 +31,19 @@ class _OverlayScreenState extends State<OverlayScreen> {
   @override
   void initState() {
     super.initState();
-    // استقبال الصور المعالجة من التطبيق الرئيسي وبثها فوق التطبيقات الأخرى
+    // استقبال واستماع البيانات القادمة من التطبيق الرئيسي
     FlutterOverlayWindow.overlayListener.listen((event) {
-      if (event is Uint8List) {
+      if (event is String) {
+        try {
+          // فك تشفير نص الـ Base64 إلى بايتات الصورة الأصلية
+          final bytes = base64Decode(event);
+          setState(() {
+            _overlayBytes = bytes;
+          });
+        } catch (e) {
+          debugPrint('Error decoding base64 overlay image: $e');
+        }
+      } else if (event is Uint8List) {
         setState(() {
           _overlayBytes = event;
         });
@@ -249,7 +260,7 @@ class _TestPageState extends State<TestPage> {
         }
       }
 
-      // رسم عدد الأشخاص وحالة التمويه في أعلى الشاشة مباشرة لترى النتائج بوضوح
+      // رسم عدد الأشخاص وحالة التمويه في أعلى الشاشة مباشرة
       img.drawString(
         out,
         'Persons: ${persons.length} | Blur: ${_blurMale ? "Male" : "Female"}',
@@ -261,8 +272,10 @@ class _TestPageState extends State<TestPage> {
 
       final encodedJpg = Uint8List.fromList(img.encodeJpg(out, quality: 70));
       
+      // إرسال الصورة للنافذة العائمة مشفرة بصيغة Base64 لضمان وصولها بنجاح تام
       if (_isAutoRunning) {
-        await FlutterOverlayWindow.shareData(encodedJpg);
+        final base64Image = base64Encode(encodedJpg);
+        await FlutterOverlayWindow.shareData(base64Image);
       }
 
       setState(() {
