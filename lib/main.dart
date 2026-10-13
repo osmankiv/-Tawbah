@@ -1,71 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
-
-// نقطة الدخول الخاصة بالنافذة العائمة لتغطية الشاشة خارج التطبيق
-@pragma("vm:entry-point")
-void overlayMain() {
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: OverlayScreen(),
-  ));
-}
-
-class OverlayScreen extends StatefulWidget {
-  const OverlayScreen({super.key});
-
-  @override
-  State<OverlayScreen> createState() => _OverlayScreenState();
-}
-
-class _OverlayScreenState extends State<OverlayScreen> {
-  Uint8List? _overlayBytes;
-
-  @override
-  void initState() {
-    super.initState();
-    // استقبال واستماع البيانات القادمة من التطبيق الرئيسي
-    FlutterOverlayWindow.overlayListener.listen((event) {
-      if (event is String) {
-        try {
-          // فك تشفير نص الـ Base64 إلى بايتات الصورة الأصلية
-          final bytes = base64Decode(event);
-          setState(() {
-            _overlayBytes = bytes;
-          });
-        } catch (e) {
-          debugPrint('Error decoding base64 overlay image: $e');
-        }
-      } else if (event is Uint8List) {
-        setState(() {
-          _overlayBytes = event;
-        });
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: _overlayBytes == null
-          ? Container(color: Colors.transparent)
-          : Image.memory(
-              _overlayBytes!,
-              fit: BoxFit.fill,
-              width: double.infinity,
-              height: double.infinity,
-            ),
-    );
-  }
-}
 
 void main() => runApp(const MaterialApp(home: TestPage()));
 
@@ -218,13 +158,6 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
-  Future<void> _checkAndRequestOverlayPermission() async {
-    final bool isGranted = await FlutterOverlayWindow.isPermissionGranted();
-    if (!isGranted) {
-      await FlutterOverlayWindow.requestPermission();
-    }
-  }
-
   Future<void> _captureAndProcessScreen() async {
     if (_cls == null || _det == null) return;
     try {
@@ -260,7 +193,6 @@ class _TestPageState extends State<TestPage> {
         }
       }
 
-      // رسم عدد الأشخاص وحالة التمويه في أعلى الشاشة مباشرة
       img.drawString(
         out,
         'Persons: ${persons.length} | Blur: ${_blurMale ? "Male" : "Female"}',
@@ -272,10 +204,9 @@ class _TestPageState extends State<TestPage> {
 
       final encodedJpg = Uint8List.fromList(img.encodeJpg(out, quality: 70));
       
-      // إرسال الصورة للنافذة العائمة مشفرة بصيغة Base64 لضمان وصولها بنجاح تام
+      // إرسال الصورة مباشرة إلى النافذة العائمة الأصلية في أندرويد
       if (_isAutoRunning) {
-        final base64Image = base64Encode(encodedJpg);
-        await FlutterOverlayWindow.shareData(base64Image);
+        await platform.invokeMethod('updateOverlay', {'bytes': encodedJpg});
       }
 
       setState(() {
@@ -290,27 +221,18 @@ class _TestPageState extends State<TestPage> {
   void _toggleAutoProcessing() async {
     if (_isAutoRunning) {
       _autoTimer?.cancel();
-      await FlutterOverlayWindow.closeOverlay();
+      await platform.invokeMethod('stopOverlay');
       setState(() {
         _isAutoRunning = false;
         _info = 'تم إيقاف المعالجة التلقائية والنافذة العائمة.';
       });
     } else {
-      await _checkAndRequestOverlayPermission();
-      
-      if (await FlutterOverlayWindow.isActive() == false) {
-        await FlutterOverlayWindow.showOverlay(
-          height: WindowSize.matchParent,
-          width: WindowSize.matchParent,
-          flag: OverlayFlag.clickThrough,
-          alignment: OverlayAlignment.center,
-          positionGravity: PositionGravity.none,
-        );
-      }
+      // إطلاق النافذة العائمة الأصلية عبر الكوتلن
+      await platform.invokeMethod('startOverlay');
 
       setState(() {
         _isAutoRunning = true;
-        _info = 'المعالجة التلقائية والنافذة العائمة تعملان الآن...';
+        _info = 'المعالجة التلقائية والنافذة العائمة تعملان بكفاءة تامة...';
       });
 
       _autoTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
