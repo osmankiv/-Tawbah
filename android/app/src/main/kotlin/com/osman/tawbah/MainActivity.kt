@@ -42,6 +42,21 @@ class MainActivity: FlutterActivity() {
                     val bytes = ScreenService.captureFrame()
                     result.success(bytes)
                 }
+                "startOverlay" -> {
+                    OverlayService.start(this)
+                    result.success(true)
+                }
+                "stopOverlay" -> {
+                    OverlayService.stop(this)
+                    result.success(true)
+                }
+                "updateOverlay" -> {
+                    val bytes = call.argument<ByteArray>("bytes")
+                    if (bytes != null) {
+                        OverlayService.updateImage(bytes)
+                    }
+                    result.success(true)
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -53,7 +68,6 @@ class MainActivity: FlutterActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_SCREEN_CAPTURE) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                // تشغيل الخدمة الأمامية لمنع انهيار التطبيق
                 val serviceIntent = Intent(this, ScreenService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(serviceIntent)
@@ -73,3 +87,4 @@ class MainActivity: FlutterActivity() {
         }
     }
 }
+natev
