@@ -218,7 +218,7 @@ class _TestPageState extends State<TestPage> {
     }
   }
 
-  void _toggleAutoProcessing() async {
+    void _toggleAutoProcessing() async {
     if (_isAutoRunning) {
       _autoTimer?.cancel();
       await platform.invokeMethod('stopOverlay');
@@ -227,7 +227,15 @@ class _TestPageState extends State<TestPage> {
         _info = 'تم إيقاف المعالجة التلقائية والنافذة العائمة.';
       });
     } else {
-      // إطلاق النافذة العائمة الأصلية عبر الكوتلن
+      // 1. التحقق من إذن الظهور فوق التطبيقات وطلبه إن لم يكن منحوحاً
+      final bool hasOverlayPermission = await platform.invokeMethod('checkOverlayPermission') ?? false;
+      if (!hasOverlayPermission) {
+        await platform.invokeMethod('requestOverlayPermission');
+        setState(() => _info = 'يرجى منح إذن العرض فوق التطبيقات ثم إعادة المحاولة.');
+        return;
+      }
+
+      // 2. إطلاق النافذة العائمة الأصلية عبر الكوتلن
       await platform.invokeMethod('startOverlay');
 
       setState(() {
@@ -244,6 +252,7 @@ class _TestPageState extends State<TestPage> {
       });
     }
   }
+
 
   Future<void> _pick() async {
     if (_cls == null || _det == null) return;
