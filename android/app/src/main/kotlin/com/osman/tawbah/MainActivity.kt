@@ -3,7 +3,9 @@ package com.osman.tawbah
 import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.DisplayMetrics
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
@@ -41,6 +43,24 @@ class MainActivity: FlutterActivity() {
                 "captureScreen" -> {
                     val bytes = ScreenService.captureFrame()
                     result.success(bytes)
+                }
+                "checkOverlayPermission" -> {
+                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(this)
+                    } else {
+                        true
+                    }
+                    result.success(granted)
+                }
+                "requestOverlayPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                        startActivity(intent)
+                    }
+                    result.success(true)
                 }
                 "startOverlay" -> {
                     OverlayService.start(this)
